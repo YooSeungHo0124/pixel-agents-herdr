@@ -8,7 +8,10 @@
  * Each connecting WebSocket client receives the full state on webviewReady.
  */
 
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
+import * as util from 'util';
 
 import { AgentRuntime } from './agentRuntime.js';
 import { AgentStateStore } from './agentStateStore.js';
@@ -32,6 +35,7 @@ import { HerdrBridge } from './herdr/herdrBridge.js';
 import { createHerdrRequest, resolveHerdrSocketPath } from './herdr/herdrClient.js';
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
 import { PixelAgentsServer } from './server.js';
+import { OfficeTui, type TuiMode } from './tui/officeTui.js';
 
 // ── Argument parsing ──────────────────────────────────────────
 
@@ -42,6 +46,10 @@ export interface CliArgs {
   host: string;
   /** Skip the herdr integration even when a herdr socket is available. */
   noHerdr?: boolean;
+  /** Draw the office in this terminal instead of only serving the browser UI. */
+  tui?: boolean;
+  /** Force the TUI renderer (default: detect kitty graphics). */
+  tuiMode?: TuiMode;
 }
 
 /** Thrown by parseArgs on an invalid --port. Kept separate from process.exit so
@@ -72,6 +80,11 @@ export function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (argv[i] === '--no-herdr') {
       args.noHerdr = true;
+    } else if (argv[i] === '--tui') {
+      args.tui = true;
+    } else if (argv[i] === '--tui-blocks') {
+      args.tui = true;
+      args.tuiMode = 'blocks';
     } else if (argv[i] === '--help') {
       console.log(`Usage: pixel-agents [options]
 
@@ -79,6 +92,9 @@ Options:
   --port, -p <number>   Port to listen on (default: OS-assigned ephemeral port)
   --host <string>       Host to bind to (default: 127.0.0.1)
   --no-herdr            Don't link characters to herdr panes
+  --tui                 Draw the office in this terminal (kitty graphics, else
+                        half-block cells); logs go to ~/.pixel-agents/tui.log
+  --tui-blocks          Like --tui, but always use half-block cells
   --help                Show this help message`);
       process.exit(0);
     }
@@ -119,6 +135,8 @@ async function main(): Promise<void> {
     console.error(`[Pixel Agents] ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   }
+  // The TUI owns the screen: everything the server prints goes to a log file.
+  if (args.tui) redirectConsoleToFile(path.join(os.homedir(), '.pixel-agents', 'tui.log'));
 
   // dist/ contains both the CLI bundle and the assets/ + webview/ directories
   const distRoot = __dirname;
@@ -332,9 +350,12 @@ async function main(): Promise<void> {
       `\n  Pixel Agents server running at http://${displayHost}:${config.port}/?token=${config.token}\n`,
     );
 
+    let tui: OfficeTui | null = null;
+
     // ── Graceful shutdown ──
     function shutdown(): void {
       console.log('\nShutting down...');
+      void tui?.stop();
       herdr?.dispose();
       runtime.dispose();
       server.stop();
@@ -343,10 +364,36 @@ async function main(): Promise<void> {
 
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
+
+    if (args.tui) {
+      tui = new OfficeTui({
+        url: `http://${displayHost}:${config.port}/?token=${config.token}`,
+        mode: args.tuiMode,
+        log: (msg) => console.log(msg),
+        onQuit: () => {
+          // Restore the terminal before exiting.
+          void tui?.stop().finally(shutdown);
+        },
+      });
+      await tui.start();
+    }
   } catch (err) {
     console.error('Failed to start server:', err);
     process.exit(1);
   }
+}
+
+/** Append console output to a file (the TUI owns stdout). */
+function redirectConsoleToFile(file: string): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const stream = fs.createWriteStream(file, { flags: 'a' });
+  const write = (...parts: unknown[]): void => {
+    stream.write(`${new Date().toISOString()} ${util.format(...parts)}\n`);
+  };
+  console.log = write;
+  console.info = write;
+  console.warn = write;
+  console.error = write;
 }
 
 // Only auto-run when this file is executed directly (`node dist/cli.js`), not

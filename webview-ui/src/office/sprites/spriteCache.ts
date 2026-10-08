@@ -1,4 +1,10 @@
+import { CHAR_FRAME_W } from '../../../../core/src/assets/constants.ts';
 import type { SpriteData } from '../types.js';
+
+/** Pixels per logical sprite pixel of a character frame (2 for a hi-res 32×64 frame). */
+export function characterResolution(sprite: SpriteData): number {
+  return Math.max(1, Math.round((sprite[0]?.length ?? CHAR_FRAME_W) / CHAR_FRAME_W));
+}
 
 const zoomCaches = new Map<number, WeakMap<SpriteData, HTMLCanvasElement>>();
 
@@ -58,8 +64,10 @@ export function getCachedSprite(sprite: SpriteData, zoom: number): HTMLCanvasEle
   const rows = sprite.length;
   const cols = sprite[0].length;
   const canvas = document.createElement('canvas');
-  canvas.width = cols * zoom;
-  canvas.height = rows * zoom;
+  // zoom may be fractional for hi-res sprites (see characterResolution); pixel
+  // edges are rounded so every pixel stays a crisp, seam-free rectangle.
+  canvas.width = Math.round(cols * zoom);
+  canvas.height = Math.round(rows * zoom);
   const ctx = canvas.getContext('2d')!;
   ctx.imageSmoothingEnabled = false;
 
@@ -68,7 +76,9 @@ export function getCachedSprite(sprite: SpriteData, zoom: number): HTMLCanvasEle
       const color = sprite[r][c];
       if (color === '') continue;
       ctx.fillStyle = color;
-      ctx.fillRect(c * zoom, r * zoom, zoom, zoom);
+      const x0 = Math.round(c * zoom);
+      const y0 = Math.round(r * zoom);
+      ctx.fillRect(x0, y0, Math.round((c + 1) * zoom) - x0, Math.round((r + 1) * zoom) - y0);
     }
   }
 

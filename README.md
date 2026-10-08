@@ -39,6 +39,10 @@
 > CLAUDE_CONFIG_DIR=~/.claude node dist/cli.js --port 3100   # run from a herdr pane
 > ```
 >
+> **Office inside a herdr pane (`--tui`).** `node dist/cli.js --tui` draws the office in the terminal instead of (or next to) a browser tab: a headless Chrome renders the same UI and every frame is sent to the pane — as real images over the kitty graphics protocol (kitty, Ghostty, WezTerm hosting herdr), or as truecolor half-block cells with `--tui-blocks` on terminals without image support (e.g. GNOME Terminal). Mouse and keys are forwarded, so click-to-focus, hover labels, the layout editor and settings all work from the pane. `+`/`-` zoom, `Ctrl+Q` quits; server logs go to `~/.pixel-agents/tui.log`. Needs Chrome (or set `PIXEL_AGENTS_CHROME`).
+>
+> **Your own cast.** Character sheets from an external asset directory can now be hi-res (224×192, i.e. 32×64 frames — drawn at the same size with twice the detail), and a directory whose `assets/characters/` contains a `REPLACE_BUNDLED` file replaces the bundled characters instead of being added to them.
+>
 > Design notes and a survey of other herdr visualizers: [docs/research/herdr-landscape](docs/research/herdr-landscape/README.md).
 
 Pixel Agents turns the AI coding agents running in your terminals into animated pixel-art characters working in a tiny office. They walk to their desks, sit down, type when they're editing files, read when they're searching, and flag you visually when they're stuck waiting for input.

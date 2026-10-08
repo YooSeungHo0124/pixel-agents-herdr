@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
 import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './assetLoader.js';
 import {
   loadCarpetTiles,
@@ -46,9 +49,16 @@ export async function loadAllCharacters(
   externalDirs: string[],
 ): Promise<LoadedCharacterSprites | null> {
   let chars = await loadCharacterSprites(assetsRoot);
+  let replaced = false;
   for (const extraDir of externalDirs) {
     const extra = await loadExternalCharacterSprites(extraDir);
-    if (extra) {
+    if (!extra) continue;
+    // A character set that marks itself as a replacement (a whole cast, e.g.
+    // a themed set) drops the bundled characters instead of mixing with them.
+    if (!replaced && replacesBundledCharacters(extraDir)) {
+      chars = extra;
+      replaced = true;
+    } else {
       chars = chars ? mergeCharacterSprites(chars, extra) : extra;
     }
   }
@@ -59,6 +69,15 @@ export async function loadAllCharacters(
   // VS Code reload -- sees the same count without four scattered calls.
   if (chars) setPaletteCount(chars.characters.length);
   return chars;
+}
+
+/** Marker file in an external dir's assets/characters/ that replaces the bundled cast. */
+export const REPLACE_BUNDLED_CHARACTERS_MARKER = 'REPLACE_BUNDLED';
+
+function replacesBundledCharacters(externalDir: string): boolean {
+  return fs.existsSync(
+    path.join(externalDir, 'assets', 'characters', REPLACE_BUNDLED_CHARACTERS_MARKER),
+  );
 }
 
 export async function loadAllPets(

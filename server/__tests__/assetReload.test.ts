@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the asset loaders so we can assert WHICH loader runs for root vs external
@@ -39,6 +42,7 @@ import {
   loadAllCharacters,
   loadAllFurniture,
   loadAllPets,
+  REPLACE_BUNDLED_CHARACTERS_MARKER,
 } from '../src/assetReload.js';
 
 beforeEach(() => {
@@ -57,6 +61,19 @@ describe('assetReload helpers', () => {
     expect(vi.mocked(assetLoader.loadExternalCharacterSprites).mock.calls.map((c) => c[0])).toEqual(
       ['e1', 'e2'],
     );
+  });
+
+  it('a character set marked REPLACE_BUNDLED replaces the bundled cast instead of joining it', async () => {
+    const themed = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-cast-'));
+    const charDir = path.join(themed, 'assets', 'characters');
+    fs.mkdirSync(charDir, { recursive: true });
+    fs.writeFileSync(path.join(charDir, REPLACE_BUNDLED_CHARACTERS_MARKER), '');
+    try {
+      const result = await loadAllCharacters('root', [themed, 'e2']);
+      expect(result?.characters).toEqual([`char-ext:${themed}`, 'char-ext:e2']);
+    } finally {
+      fs.rmSync(themed, { recursive: true, force: true });
+    }
   });
 
   it('loadAllPets uses the bundled loader for root and the external loader for extras (asymmetry)', async () => {

@@ -52,7 +52,7 @@ import {
   hasCarpetSprites,
 } from '../sprites/carpetTiles.js';
 import { getPetSprites } from '../sprites/petSpriteData.js';
-import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js';
+import { characterResolution, getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js';
 import {
   BUBBLE_HEART_SPRITE,
   BUBBLE_PERMISSION_SPRITE,
@@ -391,7 +391,9 @@ export function renderScene(
   for (const ch of characters) {
     const sprites = getCharacterSprites(ch.palette, ch.hueShift);
     const spriteData = getCharacterSprite(ch, sprites);
-    const cached = getCachedSprite(spriteData, zoom);
+    // Hi-res sheets carry N× the pixels for the same on-screen size.
+    const pixelZoom = zoom / characterResolution(spriteData);
+    const cached = getCachedSprite(spriteData, pixelZoom);
     // Sitting offset: shift character down when seated so they visually sit in the chair
     const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
     // Anchor at bottom-center of character — round to integer device pixels
@@ -418,7 +420,7 @@ export function renderScene(
         draw: (c) => {
           c.save();
           c.globalAlpha = alpha;
-          renderMatrixEffect(c, mCh, mSpriteData, mDrawX, mDrawY, zoom);
+          renderMatrixEffect(c, mCh, mSpriteData, mDrawX, mDrawY, pixelZoom);
           c.restore();
         },
       });
@@ -431,9 +433,9 @@ export function renderScene(
     if (isSelected || isHovered) {
       const outlineAlpha = isSelected ? SELECTED_OUTLINE_ALPHA : HOVERED_OUTLINE_ALPHA;
       const outlineData = getOutlineSprite(spriteData);
-      const outlineCached = getCachedSprite(outlineData, zoom);
-      const olDrawX = drawX - zoom; // 1 sprite-pixel offset, scaled
-      const olDrawY = drawY - zoom; // outline follows sitting offset via drawY
+      const outlineCached = getCachedSprite(outlineData, pixelZoom);
+      const olDrawX = drawX - Math.round(pixelZoom); // 1 sprite-pixel offset, scaled
+      const olDrawY = drawY - Math.round(pixelZoom); // outline follows sitting offset via drawY
       drawables.push({
         zY: charZY - OUTLINE_Z_SORT_OFFSET, // sort just before character
         draw: (c) => {

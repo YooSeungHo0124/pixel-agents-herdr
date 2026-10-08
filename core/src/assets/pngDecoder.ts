@@ -161,24 +161,42 @@ export function parseCarpetPng(pngBuffer: Buffer): string[][][] {
 }
 
 /**
- * Decode a single character PNG (112×96) into direction-keyed frame arrays.
- * Each PNG has 3 direction rows (down, up, right) × 7 frames (16×32 each).
+ * Pixels per logical sprite pixel in a character sheet: 1 for the standard
+ * 112×96 sheet, 2 for a 224×192 "hi-res" sheet, and so on. Hi-res frames keep
+ * the same on-screen size and are drawn with finer pixels.
+ */
+export function characterSheetResolution(width: number, height: number): number {
+  const res = Math.round(width / (CHAR_FRAME_W * CHAR_FRAMES_PER_ROW));
+  const valid =
+    res >= 1 &&
+    width === res * CHAR_FRAME_W * CHAR_FRAMES_PER_ROW &&
+    height === res * CHAR_FRAME_H * CHARACTER_DIRECTIONS.length;
+  return valid ? res : 1;
+}
+
+/**
+ * Decode a single character PNG (112×96, or an integer multiple of it for
+ * hi-res sheets) into direction-keyed frame arrays. Each PNG has 3 direction
+ * rows (down, up, right) × 7 frames (16×32 each at 1x).
  */
 export function decodeCharacterPng(pngBuffer: Buffer): CharacterDirectionSprites {
   const png = PNG.sync.read(sanitizePngBuffer(pngBuffer));
   const charData: CharacterDirectionSprites = { down: [], up: [], right: [] };
+  const res = characterSheetResolution(png.width, png.height);
+  const frameW = CHAR_FRAME_W * res;
+  const frameH = CHAR_FRAME_H * res;
 
   for (let dirIdx = 0; dirIdx < CHARACTER_DIRECTIONS.length; dirIdx++) {
     const dir = CHARACTER_DIRECTIONS[dirIdx];
-    const rowOffsetY = dirIdx * CHAR_FRAME_H;
+    const rowOffsetY = dirIdx * frameH;
     const frames: string[][][] = [];
 
     for (let f = 0; f < CHAR_FRAMES_PER_ROW; f++) {
       const sprite: string[][] = [];
-      const frameOffsetX = f * CHAR_FRAME_W;
-      for (let y = 0; y < CHAR_FRAME_H; y++) {
+      const frameOffsetX = f * frameW;
+      for (let y = 0; y < frameH; y++) {
         const row: string[] = [];
-        for (let x = 0; x < CHAR_FRAME_W; x++) {
+        for (let x = 0; x < frameW; x++) {
           const idx = ((rowOffsetY + y) * png.width + (frameOffsetX + x)) * 4;
           const r = png.data[idx];
           const g = png.data[idx + 1];
