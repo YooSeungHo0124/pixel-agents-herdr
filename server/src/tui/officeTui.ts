@@ -41,6 +41,7 @@ interface PwPage {
   screenshot(o: { type: 'png' }): Promise<Buffer>;
   waitForSelector(sel: string, o: { timeout: number }): Promise<unknown>;
   addStyleTag(o: { content: string }): Promise<unknown>;
+  evaluate(fn: string): Promise<unknown>;
   mouse: PwMouse;
   keyboard: {
     press(key: string): Promise<void>;
@@ -75,6 +76,15 @@ const CELL_PX: Record<TuiMode, { w: number; h: number }> = {
 };
 const FRAME_INTERVAL_MS: Record<TuiMode, number> = { kitty: 150, blocks: 120 };
 const KITTY_DETECT_MS = 600;
+/** CSS (scoped under `root`) that leaves only the office canvas on a flat background. */
+function hideOverlaysCss(root: string): string {
+  return (
+    `${root}, ${root} body { background: var(--color-bg) !important; } ` +
+    `${root} body * { visibility: hidden !important; } ` +
+    `${root} canvas { visibility: visible !important; }`
+  );
+}
+
 /** Ctrl+wheel steps that take any saved zoom down to the minimum (1x). */
 const BLOCKS_ZOOM_OUT_STEPS = 10;
 const CENTER_PASSES = 3;
@@ -224,20 +234,23 @@ export class OfficeTui {
     await this.page.goto(this.opts.url);
     await this.page.waitForSelector('canvas', { timeout: 15_000 }).catch(() => {});
     if (this.mode === 'blocks') await this.prepareBlocks(this.page);
+    else await this.centerWithOverlaysHidden(this.page);
   }
 
   /**
    * Half-block cells can't show the page's HTML text (labels, toolbars, toasts)
    * legibly, so only the office canvas is kept, zoomed out to fit the pane.
    */
+  /** Kitty mode keeps the HTML UI; hide it only while measuring the office. */
+  private async centerWithOverlaysHidden(page: PwPage): Promise<void> {
+    await page.addStyleTag({ content: hideOverlaysCss('html.pa-measure') }).catch(() => {});
+    await page.evaluate("document.documentElement.classList.add('pa-measure')").catch(() => {});
+    await this.centerOffice(page);
+    await page.evaluate("document.documentElement.classList.remove('pa-measure')").catch(() => {});
+  }
+
   private async prepareBlocks(page: PwPage): Promise<void> {
-    await page
-      .addStyleTag({
-        content:
-          'html, body { background: var(--color-bg) !important; } ' +
-          'body * { visibility: hidden !important; } canvas { visibility: visible !important; }',
-      })
-      .catch(() => {});
+    await page.addStyleTag({ content: hideOverlaysCss('html') }).catch(() => {});
     const vp = this.viewport();
     await page.mouse.move(vp.width / 2, vp.height / 2);
     await page.keyboard.down('Control');

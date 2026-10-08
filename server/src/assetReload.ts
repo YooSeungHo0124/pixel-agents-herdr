@@ -55,7 +55,7 @@ export async function loadAllCharacters(
     if (!extra) continue;
     // A character set that marks itself as a replacement (a whole cast, e.g.
     // a themed set) drops the bundled characters instead of mixing with them.
-    if (!replaced && replacesBundledCharacters(extraDir)) {
+    if (!replaced && replacesBundled(extraDir, 'characters')) {
       chars = extra;
       replaced = true;
     } else {
@@ -71,13 +71,12 @@ export async function loadAllCharacters(
   return chars;
 }
 
-/** Marker file in an external dir's assets/characters/ that replaces the bundled cast. */
+/** Marker file in an external dir's assets/characters/ (or assets/pets/) that
+ *  replaces the bundled set instead of adding to it. */
 export const REPLACE_BUNDLED_CHARACTERS_MARKER = 'REPLACE_BUNDLED';
 
-function replacesBundledCharacters(externalDir: string): boolean {
-  return fs.existsSync(
-    path.join(externalDir, 'assets', 'characters', REPLACE_BUNDLED_CHARACTERS_MARKER),
-  );
+function replacesBundled(externalDir: string, kind: 'characters' | 'pets'): boolean {
+  return fs.existsSync(path.join(externalDir, 'assets', kind, REPLACE_BUNDLED_CHARACTERS_MARKER));
 }
 
 export async function loadAllPets(
@@ -85,9 +84,14 @@ export async function loadAllPets(
   externalDirs: string[],
 ): Promise<LoadedPetSprites | null> {
   let pets = await loadPetSprites(assetsRoot);
+  let replaced = false;
   for (const extraDir of externalDirs) {
     const extra = await loadExternalPetSprites(extraDir);
-    if (extra) {
+    if (!extra) continue;
+    if (!replaced && replacesBundled(extraDir, 'pets')) {
+      pets = extra;
+      replaced = true;
+    } else {
       pets = pets ? mergePetSprites(pets, extra) : extra;
     }
   }

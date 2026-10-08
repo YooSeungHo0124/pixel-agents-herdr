@@ -222,7 +222,8 @@ export function decodeFloorPng(pngBuffer: Buffer): string[][] {
 }
 
 /**
- * Decode a single pet PNG (96×96) into direction- and state-keyed frame arrays.
+ * Decode a single pet PNG (96×96, or an integer multiple for hi-res) into
+ * direction- and state-keyed frame arrays.
  *
  * Layout (52be7e8 spec):
  *   Row 0 (y=0..32):   6 frames × 16w — walkDown[0..2] then idleDown[0..2]
@@ -238,12 +239,17 @@ export function decodePetPng(pngBuffer: Buffer): PetSpriteFrames {
   try {
     const png = PNG.sync.read(sanitizePngBuffer(pngBuffer));
 
-    if (png.width !== PET_IMAGE_WIDTH || png.height !== PET_IMAGE_HEIGHT) {
+    // 96×96, or an integer multiple of it for a hi-res sheet (finer pixels, same size).
+    const res = Math.round(png.width / PET_IMAGE_WIDTH);
+    if (res < 1 || png.width !== PET_IMAGE_WIDTH * res || png.height !== PET_IMAGE_HEIGHT * res) {
       console.warn(
-        `[PngDecoder] Pet sprite has unexpected dimensions: ${png.width}×${png.height} (expected ${PET_IMAGE_WIDTH}×${PET_IMAGE_HEIGHT})`,
+        `[PngDecoder] Pet sprite has unexpected dimensions: ${png.width}×${png.height} (expected ${PET_IMAGE_WIDTH}×${PET_IMAGE_HEIGHT} or a multiple)`,
       );
       throw new Error('Invalid pet sprite dimensions');
     }
+    const small = PET_FRAME_W_SMALL * res;
+    const large = PET_FRAME_W_LARGE * res;
+    const frameH = PET_FRAME_H * res;
 
     function extractFrame(ox: number, oy: number, w: number, h: number): string[][] {
       const sprite: string[][] = [];
@@ -263,43 +269,27 @@ export function decodePetPng(pngBuffer: Buffer): PetSpriteFrames {
     // Row 0 (y=0): 6 frames @ 16w — walkDown[0..2] + idleDown[0..2]
     const walkDown: string[][][] = [];
     for (let f = 0; f < PET_WALK_FRAMES_VERT; f++) {
-      walkDown.push(extractFrame(f * PET_FRAME_W_SMALL, 0, PET_FRAME_W_SMALL, PET_FRAME_H));
+      walkDown.push(extractFrame(f * small, 0, small, frameH));
     }
     const idleDown: string[][][] = [];
     for (let f = 0; f < PET_IDLE_FRAMES_VERT; f++) {
-      idleDown.push(
-        extractFrame(
-          (PET_WALK_FRAMES_VERT + f) * PET_FRAME_W_SMALL,
-          0,
-          PET_FRAME_W_SMALL,
-          PET_FRAME_H,
-        ),
-      );
+      idleDown.push(extractFrame((PET_WALK_FRAMES_VERT + f) * small, 0, small, frameH));
     }
 
     // Row 1 (y=32): 6 frames @ 16w — walkUp[0..2] + idleUp[0..2]
     const walkUp: string[][][] = [];
     for (let f = 0; f < PET_WALK_FRAMES_VERT; f++) {
-      walkUp.push(extractFrame(f * PET_FRAME_W_SMALL, PET_FRAME_H, PET_FRAME_W_SMALL, PET_FRAME_H));
+      walkUp.push(extractFrame(f * small, frameH, small, frameH));
     }
     const idleUp: string[][][] = [];
     for (let f = 0; f < PET_IDLE_FRAMES_VERT; f++) {
-      idleUp.push(
-        extractFrame(
-          (PET_WALK_FRAMES_VERT + f) * PET_FRAME_W_SMALL,
-          PET_FRAME_H,
-          PET_FRAME_W_SMALL,
-          PET_FRAME_H,
-        ),
-      );
+      idleUp.push(extractFrame((PET_WALK_FRAMES_VERT + f) * small, frameH, small, frameH));
     }
 
     // Row 2 (y=64): 3 frames @ 32w — walkRight[0..2]
     const walkRight: string[][][] = [];
     for (let f = 0; f < PET_WALK_FRAMES_HORIZ; f++) {
-      walkRight.push(
-        extractFrame(f * PET_FRAME_W_LARGE, PET_FRAME_H * 2, PET_FRAME_W_LARGE, PET_FRAME_H),
-      );
+      walkRight.push(extractFrame(f * large, frameH * 2, large, frameH));
     }
 
     return { walkDown, idleDown, walkUp, idleUp, walkRight };

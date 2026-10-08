@@ -1,5 +1,10 @@
-import { CHAR_FRAME_W } from '../../../../core/src/assets/constants.ts';
+import { CHAR_FRAME_W, PET_FRAME_H } from '../../../../core/src/assets/constants.ts';
 import type { SpriteData } from '../types.js';
+
+/** Pixels per logical sprite pixel of a pet frame (2 for a hi-res sheet). */
+export function petResolution(sprite: SpriteData): number {
+  return Math.max(1, Math.round(sprite.length / PET_FRAME_H));
+}
 
 /** Pixels per logical sprite pixel of a character frame (2 for a hi-res 32×64 frame). */
 export function characterResolution(sprite: SpriteData): number {

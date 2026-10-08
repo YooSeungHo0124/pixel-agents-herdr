@@ -52,7 +52,12 @@ import {
   hasCarpetSprites,
 } from '../sprites/carpetTiles.js';
 import { getPetSprites } from '../sprites/petSpriteData.js';
-import { characterResolution, getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js';
+import {
+  characterResolution,
+  getCachedSprite,
+  getOutlineSprite,
+  petResolution,
+} from '../sprites/spriteCache.js';
 import {
   BUBBLE_HEART_SPRITE,
   BUBBLE_PERMISSION_SPRITE,
@@ -468,7 +473,7 @@ export function renderScene(
     const spriteData = getPetSpriteData(pet, petSprites);
     if (!spriteData) continue;
 
-    const cached = getCachedSprite(spriteData, zoom);
+    const cached = getCachedSprite(spriteData, zoom / petResolution(spriteData));
     // Anchor at bottom-center at (pet.x, pet.y) — round to integer device pixels
     const drawX = Math.round(offsetX + pet.x * zoom - cached.width / 2);
     const drawY = Math.round(offsetY + pet.y * zoom - cached.height);

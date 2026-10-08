@@ -41,7 +41,9 @@
 >
 > **Office inside a herdr pane (`--tui`).** `node dist/cli.js --tui` draws the office in the terminal instead of (or next to) a browser tab: a headless Chrome renders the same UI and every frame is sent to the pane — as real images over the kitty graphics protocol (kitty, Ghostty, WezTerm hosting herdr), or as truecolor half-block cells with `--tui-blocks` on terminals without image support (e.g. GNOME Terminal). Mouse and keys are forwarded, so click-to-focus, hover labels, the layout editor and settings all work from the pane. `+`/`-` zoom, `Ctrl+Q` quits; server logs go to `~/.pixel-agents/tui.log`. Needs Chrome (or set `PIXEL_AGENTS_CHROME`).
 >
-> **Your own cast.** Character sheets from an external asset directory can now be hi-res (224×192, i.e. 32×64 frames — drawn at the same size with twice the detail), and a directory whose `assets/characters/` contains a `REPLACE_BUNDLED` file replaces the bundled characters instead of being added to them.
+> **Your own cast.** Character sheets from an external asset directory can now be hi-res (224×192, i.e. 32×64 frames — drawn at the same size with twice the detail), and a directory whose `assets/characters/` (or `assets/pets/`) contains a `REPLACE_BUNDLED` file replaces the bundled characters (or pets) instead of being added to them. Pet sheets may be hi-res too (192×192).
+>
+> **herdr + kitty:** herdr forwards kitty graphics only with `[experimental] kitty_graphics = true` in `~/.config/herdr/config.toml`. Apply it without restarting herdr via `herdr server reload-config`; panes created after the reload can show images.
 >
 > Design notes and a survey of other herdr visualizers: [docs/research/herdr-landscape](docs/research/herdr-landscape/README.md).
 

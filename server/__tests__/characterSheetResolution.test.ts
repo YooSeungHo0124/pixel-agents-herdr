@@ -1,7 +1,11 @@
 import { PNG } from 'pngjs';
 import { describe, expect, it } from 'vitest';
 
-import { characterSheetResolution, decodeCharacterPng } from '../../core/src/assets/pngDecoder.js';
+import {
+  characterSheetResolution,
+  decodeCharacterPng,
+  decodePetPng,
+} from '../../core/src/assets/pngDecoder.js';
 
 describe('character sheet resolution', () => {
   it('detects 1x and integer hi-res sheets, falling back to 1x for odd sizes', () => {
@@ -16,5 +20,15 @@ describe('character sheet resolution', () => {
     expect(sheet.down).toHaveLength(7);
     expect(sheet.down[0]).toHaveLength(64);
     expect(sheet.down[0][0]).toHaveLength(32);
+  });
+});
+
+describe('pet sheet resolution', () => {
+  it('decodes a 2x pet sheet into 32x64 vertical and 64x64 side frames', () => {
+    const png = new PNG({ width: 192, height: 192 });
+    const pet = decodePetPng(PNG.sync.write(png));
+    expect(pet.walkDown[0]).toHaveLength(64);
+    expect(pet.walkDown[0][0]).toHaveLength(32);
+    expect(pet.walkRight[0][0]).toHaveLength(64);
   });
 });
