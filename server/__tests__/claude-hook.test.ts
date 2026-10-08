@@ -56,6 +56,10 @@ function startRecordingServer(): Promise<{ port: number; received: string[]; clo
   });
 }
 
+function received(server: { received: string[] }, i: number): Record<string, unknown> {
+  return JSON.parse(server.received[i]) as Record<string, unknown>;
+}
+
 /** Run the hook script with given stdin, returns exit code. */
 function runHookScript(
   stdin: string,
@@ -121,6 +125,28 @@ describe('claude-hook.js integration', () => {
     expect(code).toBe(0);
     expect(received).toHaveLength(1);
     expect(JSON.parse(received[0]).session_id).toBe('abc');
+  });
+
+  itBuilt('forwards the herdr pane env when running inside herdr', async () => {
+    const server = await startRecordingServer();
+    writeServerJson(server.port, 'test-token');
+    const event = JSON.stringify({ session_id: 'abc', hook_event_name: 'SessionStart' });
+
+    await runHookScript(event, {
+      HERDR_ENV: '1',
+      HERDR_PANE_ID: 'w1:p2',
+      HERDR_WORKSPACE_ID: 'w1',
+      HERDR_TAB_ID: 'w1:t1',
+    });
+    await runHookScript(event, { HERDR_ENV: '', HERDR_PANE_ID: '' });
+    server.close();
+
+    expect(received(server, 0).herdr).toEqual({
+      pane_id: 'w1:p2',
+      workspace_id: 'w1',
+      tab_id: 'w1:t1',
+    });
+    expect(received(server, 1).herdr).toBeUndefined();
   });
 
   // 2. Script exits 0 on missing server.json

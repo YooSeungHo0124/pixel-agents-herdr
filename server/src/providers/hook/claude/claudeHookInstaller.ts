@@ -4,6 +4,7 @@ import * as path from 'path';
 import { isDeepStrictEqual } from 'util';
 
 import { HOOK_SCRIPTS_DIR } from '../../../constants.js';
+import { getClaudeConfigDir } from './claudeConfigDir.js';
 import {
   CLAUDE_HOOK_EVENTS,
   CLAUDE_HOOK_SCRIPT_NAME,
@@ -33,7 +34,7 @@ interface ClaudeSettings {
 
 /** Returns the absolute path to ~/.claude/settings.json. */
 function getClaudeSettingsPath(): string {
-  return path.join(os.homedir(), '.claude', 'settings.json');
+  return path.join(getClaudeConfigDir(), 'settings.json');
 }
 
 /** Returns the destination path for the hook script (~/.pixel-agents/hooks/claude-hook.js). */

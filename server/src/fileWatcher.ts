@@ -612,11 +612,15 @@ export function setHookProvider(provider: HookProvider): void {
  * the label the Areas UI keys on. Registered by the VS Code adapter; unset in
  * standalone, which falls back to basename.
  */
-export type FolderNameResolver = (ctx: { cwd?: string; projectDir?: string }) => string | undefined;
+export type FolderNameResolver = (ctx: {
+  cwd?: string;
+  projectDir?: string;
+  sessionId?: string;
+}) => string | undefined;
 
 let folderNameResolver: FolderNameResolver | null = null;
 
-/** Register the host's cwd/projectDir → WorkspaceFolder.name resolver (VS Code only). */
+/** Register the host's cwd/projectDir/session → folder label resolver. */
 export function setFolderNameResolver(resolver: FolderNameResolver): void {
   folderNameResolver = resolver;
 }
@@ -1085,7 +1089,7 @@ export function adoptExternalSessionFromHook(
     knownJsonlFiles.add(transcriptPath);
     const projectDir = path.dirname(transcriptPath);
     const folderName =
-      folderNameResolver?.({ cwd, projectDir }) ??
+      folderNameResolver?.({ cwd, projectDir, sessionId }) ??
       folderNameFromProjectDir(path.basename(projectDir));
 
     adoptExternalSession(
@@ -1115,7 +1119,8 @@ export function adoptExternalSessionFromHook(
   } else {
     // Hooks-only provider (OpenCode, Copilot): no transcript file, all state from hooks
     const id = nextAgentIdRef.current++;
-    const folderName = folderNameResolver?.({ cwd }) ?? (cwd ? path.basename(cwd) : undefined);
+    const folderName =
+      folderNameResolver?.({ cwd, sessionId }) ?? (cwd ? path.basename(cwd) : undefined);
     const agent: AgentState = {
       id,
       sessionId,
@@ -1534,7 +1539,7 @@ function scanGlobalProjectDirs(
       }
 
       const folderName =
-        folderNameResolver?.({ projectDir: dirPath }) ??
+        folderNameResolver?.({ projectDir: dirPath, sessionId: path.basename(file, '.jsonl') }) ??
         folderNameFromProjectDir(path.basename(dirPath));
       knownJsonlFiles.add(file);
       console.log(

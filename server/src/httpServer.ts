@@ -9,6 +9,8 @@ import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import type {
   AssetCache,
+  ClientReadySideEffect,
+  FocusAgentSideEffect,
   ReloadAssetsSideEffect,
   SetHooksEnabledSideEffect,
 } from './clientMessageHandler.js';
@@ -45,6 +47,10 @@ export interface HttpServerOptions {
   onSetHooksEnabled?: SetHooksEnabledSideEffect;
   /** Invoked when an external asset directory is added/removed. Standalone reloads + re-broadcasts assets here. */
   onReloadAssets?: ReloadAssetsSideEffect;
+  /** Standalone: focus an agent's terminal (herdr pane). See ClientMessageContext.onFocusAgent. */
+  onFocusAgent?: FocusAgentSideEffect;
+  /** Standalone: extra per-client replay after webviewReady. */
+  onClientReady?: ClientReadySideEffect;
 }
 
 /** Result of createHttpServer(). */
@@ -210,6 +216,8 @@ function registerWebSocketRoute(app: FastifyInstance, options: HttpServerOptions
           cache: options.assetCache ?? null,
           onSetHooksEnabled: options.onSetHooksEnabled,
           onReloadAssets: options.onReloadAssets,
+          onFocusAgent: options.onFocusAgent,
+          onClientReady: options.onClientReady,
           privileged,
         });
       } catch {

@@ -60,7 +60,18 @@ export interface ClientMessageContext {
    * to false so a caller that forgets to pass it gets the safe answer.
    */
   privileged?: boolean;
+  /**
+   * Bring an agent's terminal to the front (standalone: its herdr pane). Only
+   * honored for privileged clients: it moves the user's focus, which an
+   * untokened page on the network must not be able to do.
+   */
+  onFocusAgent?: FocusAgentSideEffect;
+  /** Extra per-client replay at the end of the webviewReady handshake (herdr pane info). */
+  onClientReady?: ClientReadySideEffect;
 }
+
+export type FocusAgentSideEffect = (agentId: number) => void;
+export type ClientReadySideEffect = (send: WsSend) => void;
 
 // ── Setting key constants (mirror adapters/vscode/constants.ts) ──
 const KEY_SOUND_ENABLED = 'pixel-agents.soundEnabled';
@@ -270,8 +281,14 @@ export function handleClientMessage(
       break;
     }
 
+    case 'focusAgent': {
+      const id = msg.id;
+      if (typeof id === 'number' && ctx.privileged === true) ctx.onFocusAgent?.(id);
+      break;
+    }
+
     default:
-      // focusAgent, exportLayout, importLayout
+      // exportLayout, importLayout
       // require IDE-specific handling (not yet implemented for standalone)
       break;
   }
@@ -515,4 +532,5 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   // exist once the layout flush creates them. Without this a reconnecting
   // client shows bare characters until each agent takes another turn.
   resendAgentActivity(send, store);
+  ctx.onClientReady?.(send);
 }

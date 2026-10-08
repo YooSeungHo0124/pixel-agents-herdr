@@ -25,6 +25,7 @@ export type ServerMessage =
   | SubagentToolPermission
   | AgentTeamInfo
   | AgentContextUsage
+  | AgentHerdrInfo
   | LayoutLoaded
   | FurnitureAssetsLoaded
   | CharacterSpritesLoaded
@@ -186,6 +187,15 @@ export interface AgentContextUsage {
   id: number;
   contextTokens: number;
   maxContextTokens: number;
+}
+
+export interface AgentHerdrInfo {
+  type: 'agentHerdrInfo';
+  id: number;
+  paneId?: string;
+  workspaceLabel?: string;
+  title?: string;
+  status?: string;
 }
 
 export interface LayoutLoaded {

@@ -189,6 +189,17 @@ async function main(): Promise<void> {
     if (withDebugLog?.debugLog) debugLogPath = withDebugLog.debugLog;
   }
 
+  // herdr injects the pane's location into every process it runs; Claude Code
+  // hands its env down to hooks. Forwarding it lets the server tie this session
+  // to its herdr pane immediately, before herdr's own agent.list catches up.
+  if (process.env.HERDR_ENV === '1' && process.env.HERDR_PANE_ID) {
+    data.herdr = {
+      pane_id: process.env.HERDR_PANE_ID,
+      workspace_id: process.env.HERDR_WORKSPACE_ID,
+      tab_id: process.env.HERDR_TAB_ID,
+    };
+  }
+
   const body = JSON.stringify(data);
   await Promise.all(servers.map((server) => postToServer(server, body, eventName, sid)));
 }

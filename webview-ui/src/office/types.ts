@@ -165,6 +165,16 @@ export interface OfficeLayout {
   areaTiles?: Array<string | null>;
 }
 
+/** An agent's herdr pane, as reported by the server's herdr bridge. */
+export interface HerdrLink {
+  paneId: string;
+  workspaceLabel?: string;
+  /** Session title herdr read from the terminal (Claude's own summary) */
+  title?: string;
+  /** herdr lifecycle status: idle | working | blocked | done | unknown */
+  status?: string;
+}
+
 export interface Character {
   id: number;
   state: CharacterState;
@@ -221,8 +231,10 @@ export interface Character {
   matrixEffectTimer: number;
   /** Per-column random seeds (16 values) for staggered rain timing */
   matrixEffectSeeds: number[];
-  /** Workspace folder name (only set for multi-root workspaces) */
+  /** Workspace folder name (only set for multi-root workspaces); the herdr workspace label when linked to herdr */
   folderName?: string;
+  /** Where this agent runs in herdr, when the server is linked to a herdr session */
+  herdr?: HerdrLink;
   /** Headless agent: adopted from outside the office, so there is no terminal to
    *  focus. Rendered translucent. Teammates and sub-agents are never headless —
    *  clicking them reaches their lead's / parent's terminal. */

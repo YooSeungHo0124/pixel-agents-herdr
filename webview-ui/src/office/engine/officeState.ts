@@ -30,6 +30,7 @@ import { getLoadedCharacterCount } from '../sprites/spriteData.js';
 import type {
   Character,
   FurnitureInstance,
+  HerdrLink,
   OfficeLayout,
   Pet,
   PlacedFurniture,
@@ -1077,6 +1078,15 @@ export class OfficeState {
     const ch = this.characters.get(id);
     if (!ch) return;
     ch.isHeadless = headless;
+  }
+
+  /** Attach herdr pane info. A herdr-linked agent has a terminal to focus, so it is never headless. */
+  setAgentHerdr(id: number, link: HerdrLink): void {
+    const ch = this.characters.get(id);
+    if (!ch) return;
+    ch.herdr = link;
+    ch.isHeadless = false;
+    if (link.workspaceLabel) ch.folderName = link.workspaceLabel;
   }
 
   setAgentContext(id: number, contextTokens: number, maxContextTokens: number): void {

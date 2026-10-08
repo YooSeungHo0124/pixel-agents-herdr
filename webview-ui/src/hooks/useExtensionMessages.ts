@@ -735,6 +735,15 @@ export function useExtensionMessages(
       } else if (msg.type === 'agentContextUsage') {
         const id = msg.id as number;
         os.setAgentContext(id, msg.contextTokens as number, msg.maxContextTokens as number);
+      } else if (msg.type === 'agentHerdrInfo') {
+        const workspaceLabel = msg.workspaceLabel as string | undefined;
+        os.setAgentHerdr(msg.id as number, {
+          paneId: msg.paneId as string,
+          workspaceLabel,
+          title: msg.title as string | undefined,
+          status: msg.status as string | undefined,
+        });
+        noteFolderName(workspaceLabel);
       }
     };
     const unsubscribe = transport.onMessage(handler);

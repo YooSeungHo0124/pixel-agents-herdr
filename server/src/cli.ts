@@ -25,8 +25,11 @@ import {
   grantHooksConsent,
   readConfig,
 } from './configPersistence.js';
-import { MAX_PORT, MIN_PORT } from './constants.js';
+import { HERDR_REQUEST_TIMEOUT_MS, MAX_PORT, MIN_PORT } from './constants.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
+import { setFolderNameResolver } from './fileWatcher.js';
+import { HerdrBridge } from './herdr/herdrBridge.js';
+import { createHerdrRequest, resolveHerdrSocketPath } from './herdr/herdrClient.js';
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
 import { PixelAgentsServer } from './server.js';
 
@@ -37,6 +40,8 @@ export interface CliArgs {
    *  can run at once without a collision. --port picks a fixed one. */
   port?: number;
   host: string;
+  /** Skip the herdr integration even when a herdr socket is available. */
+  noHerdr?: boolean;
 }
 
 /** Thrown by parseArgs on an invalid --port. Kept separate from process.exit so
@@ -65,12 +70,15 @@ export function parseArgs(argv: string[]): CliArgs {
     } else if (argv[i] === '--host' && argv[i + 1]) {
       args.host = argv[i + 1];
       i++;
+    } else if (argv[i] === '--no-herdr') {
+      args.noHerdr = true;
     } else if (argv[i] === '--help') {
       console.log(`Usage: pixel-agents [options]
 
 Options:
   --port, -p <number>   Port to listen on (default: OS-assigned ephemeral port)
   --host <string>       Host to bind to (default: 127.0.0.1)
+  --no-herdr            Don't link characters to herdr panes
   --help                Show this help message`);
       process.exit(0);
     }
@@ -145,8 +153,24 @@ async function main(): Promise<void> {
     // Create runtime first (before server.start, so we can pass it in)
     const runtime = new AgentRuntime(store, claudeProvider);
 
+    // herdr: link each character to the herdr pane its session runs in
+    // (read-only polling; agent.focus only when the user clicks a character).
+    const herdrSocket = args.noHerdr ? undefined : resolveHerdrSocketPath();
+    const herdr = herdrSocket
+      ? new HerdrBridge({
+          store,
+          request: createHerdrRequest(herdrSocket, HERDR_REQUEST_TIMEOUT_MS),
+        })
+      : null;
+    if (herdr) {
+      console.log(`[Pixel Agents] herdr: using socket ${herdrSocket}`);
+      setFolderNameResolver((ctx) => herdr.workspaceLabelFor(ctx));
+      herdr.start();
+    }
+
     // Wire hook events: HTTP POST -> runtime -> hookEventHandler -> agents
     server.onHookEvent((providerId, event) => {
+      herdr?.noteHookEvent(event);
       runtime.handleHookEvent(providerId, event);
     });
 
@@ -237,6 +261,8 @@ async function main(): Promise<void> {
       assetCache,
       onSetHooksEnabled,
       onReloadAssets,
+      onFocusAgent: herdr ? (id) => void herdr.focusAgent(id) : undefined,
+      onClientReady: herdr ? (send) => herdr.resend(send) : undefined,
     });
     currentConfig = { port: config.port, token: config.token };
 
@@ -309,6 +335,7 @@ async function main(): Promise<void> {
     // ── Graceful shutdown ──
     function shutdown(): void {
       console.log('\nShutting down...');
+      herdr?.dispose();
       runtime.dispose();
       server.stop();
       process.exit(0);

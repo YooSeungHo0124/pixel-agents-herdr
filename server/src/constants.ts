@@ -107,3 +107,9 @@ export const PALETTE_COUNT = 6;
  *  clientMessageHandler to guard saveAgentSeats payloads from a remote or
  *  hand-edited source corrupting the stored values with out-of-range values. */
 export const HUE_SHIFT_MAX_DEG = 360;
+
+// ── herdr integration ─────────────────────────────────────────
+/** How often the herdr bridge re-reads agent.list / workspace.list. */
+export const HERDR_POLL_INTERVAL_MS = 1500;
+/** herdr answers locally in milliseconds; anything slower means it is wedged. */
+export const HERDR_REQUEST_TIMEOUT_MS = 2000;

@@ -23,6 +23,24 @@
 
 <br/>
 
+> ### 🐑 pixel-agents-herdr fork
+>
+> This fork links the office to [herdr](https://herdr.dev), the terminal multiplexer for coding agents. When the standalone server runs inside herdr (or finds herdr's socket), it:
+>
+> - **Click to jump** — clicking a character focuses that agent's herdr pane (`agent.focus`), even across workspaces.
+> - **Labels from herdr** — each character shows `workspace · session title` (Claude's own summary, as herdr reads it).
+> - **Workspaces as Areas** — an agent's folder is its herdr workspace label, so the Areas editor groups characters per herdr workspace.
+> - **`CLAUDE_CONFIG_DIR` support** — hooks and transcripts follow `CLAUDE_CONFIG_DIR` instead of assuming `~/.claude`.
+>
+> It is read-only toward herdr: it polls `agent.list` / `workspace.list` and calls `agent.focus` only on a click from a tokened client. It never creates, closes, moves or types into panes. Characters are matched to panes by Claude session id (`agent_session.value` in herdr), with the hook-forwarded `HERDR_PANE_ID` as an early hint. Pass `--no-herdr` to turn it off.
+>
+> ```bash
+> npm install && npm run build
+> CLAUDE_CONFIG_DIR=~/.claude node dist/cli.js --port 3100   # run from a herdr pane
+> ```
+>
+> Design notes and a survey of other herdr visualizers: [docs/research/herdr-landscape](docs/research/herdr-landscape/README.md).
+
 Pixel Agents turns the AI coding agents running in your terminals into animated pixel-art characters working in a tiny office. They walk to their desks, sit down, type when they're editing files, read when they're searching, and flag you visually when they're stuck waiting for input.
 
 It ships in two forms from the same codebase:
