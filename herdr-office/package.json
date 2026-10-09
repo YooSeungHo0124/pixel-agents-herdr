@@ -1,0 +1,19 @@
+{
+  "name": "herdr-office",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pixel office inside a herdr pane: workspaces are rooms, agents are characters",
+  "type": "module",
+  "bin": {
+    "herdr-office": "./src/main.ts"
+  },
+  "engines": {
+    "node": ">=23.6"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "demo": "node src/main.ts --demo",
+    "test": "node --test test/*.test.ts",
+    "check-types": "tsc -p tsconfig.json"
+  }
+}
