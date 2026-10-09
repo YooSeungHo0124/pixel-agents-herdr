@@ -161,17 +161,29 @@ export function parseCarpetPng(pngBuffer: Buffer): string[][][] {
 }
 
 /**
- * Pixels per logical sprite pixel in a character sheet: 1 for the standard
- * 112×96 sheet, 2 for a 224×192 "hi-res" sheet, and so on. Hi-res frames keep
- * the same on-screen size and are drawn with finer pixels.
+ * Frame geometry of a character sheet. The standard sheet is 112×96 (7 frames
+ * × 3 rows of 16×32). A sheet whose height is an integer multiple N of 96 is
+ * "hi-res": its frames are N× taller and drawn at the same on-screen height
+ * with finer pixels. Frames may also be wider than N×16 (e.g. a pose that
+ * includes a laptop or chair) as long as the width splits into 7 equal frames.
  */
-export function characterSheetResolution(width: number, height: number): number {
-  const res = Math.round(width / (CHAR_FRAME_W * CHAR_FRAMES_PER_ROW));
+export function characterSheetGeometry(
+  width: number,
+  height: number,
+): { res: number; frameW: number; frameH: number } {
+  const res = Math.round(height / (CHAR_FRAME_H * CHARACTER_DIRECTIONS.length));
   const valid =
     res >= 1 &&
-    width === res * CHAR_FRAME_W * CHAR_FRAMES_PER_ROW &&
-    height === res * CHAR_FRAME_H * CHARACTER_DIRECTIONS.length;
-  return valid ? res : 1;
+    height === res * CHAR_FRAME_H * CHARACTER_DIRECTIONS.length &&
+    width % CHAR_FRAMES_PER_ROW === 0 &&
+    width / CHAR_FRAMES_PER_ROW >= res * CHAR_FRAME_W;
+  if (!valid) return { res: 1, frameW: CHAR_FRAME_W, frameH: CHAR_FRAME_H };
+  return { res, frameW: width / CHAR_FRAMES_PER_ROW, frameH: res * CHAR_FRAME_H };
+}
+
+/** Pixels per logical sprite pixel in a character sheet (see characterSheetGeometry). */
+export function characterSheetResolution(width: number, height: number): number {
+  return characterSheetGeometry(width, height).res;
 }
 
 /**
@@ -182,9 +194,7 @@ export function characterSheetResolution(width: number, height: number): number 
 export function decodeCharacterPng(pngBuffer: Buffer): CharacterDirectionSprites {
   const png = PNG.sync.read(sanitizePngBuffer(pngBuffer));
   const charData: CharacterDirectionSprites = { down: [], up: [], right: [] };
-  const res = characterSheetResolution(png.width, png.height);
-  const frameW = CHAR_FRAME_W * res;
-  const frameH = CHAR_FRAME_H * res;
+  const { frameW, frameH } = characterSheetGeometry(png.width, png.height);
 
   for (let dirIdx = 0; dirIdx < CHARACTER_DIRECTIONS.length; dirIdx++) {
     const dir = CHARACTER_DIRECTIONS[dirIdx];

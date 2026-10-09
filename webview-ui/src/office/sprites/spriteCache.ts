@@ -1,4 +1,4 @@
-import { CHAR_FRAME_W, PET_FRAME_H } from '../../../../core/src/assets/constants.ts';
+import { CHAR_FRAME_H, PET_FRAME_H } from '../../../../core/src/assets/constants.ts';
 import type { SpriteData } from '../types.js';
 
 /** Pixels per logical sprite pixel of a pet frame (2 for a hi-res sheet). */
@@ -6,9 +6,10 @@ export function petResolution(sprite: SpriteData): number {
   return Math.max(1, Math.round(sprite.length / PET_FRAME_H));
 }
 
-/** Pixels per logical sprite pixel of a character frame (2 for a hi-res 32×64 frame). */
+/** Pixels per logical sprite pixel of a character frame (2 for a hi-res 32×64
+ *  frame). Measured on the height: hi-res frames may be wider than 16 logical px. */
 export function characterResolution(sprite: SpriteData): number {
-  return Math.max(1, Math.round((sprite[0]?.length ?? CHAR_FRAME_W) / CHAR_FRAME_W));
+  return Math.max(1, Math.round(sprite.length / CHAR_FRAME_H));
 }
 
 const zoomCaches = new Map<number, WeakMap<SpriteData, HTMLCanvasElement>>();

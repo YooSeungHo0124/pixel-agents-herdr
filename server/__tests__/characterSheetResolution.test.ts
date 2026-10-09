@@ -12,6 +12,14 @@ describe('character sheet resolution', () => {
     expect(characterSheetResolution(112, 96)).toBe(1);
     expect(characterSheetResolution(224, 192)).toBe(2);
     expect(characterSheetResolution(224, 96)).toBe(1);
+    expect(characterSheetResolution(100, 192)).toBe(1);
+  });
+
+  it('accepts hi-res frames wider than 16 logical px', () => {
+    const png = new PNG({ width: 896, height: 384 });
+    const sheet = decodeCharacterPng(PNG.sync.write(png));
+    expect(sheet.right[3]).toHaveLength(128);
+    expect(sheet.right[3][0]).toHaveLength(128);
   });
 
   it('decodes a 2x sheet into 32x64 frames', () => {
