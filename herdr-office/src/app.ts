@@ -4,6 +4,7 @@
  */
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { Actor } from './actors.ts';
@@ -131,7 +132,7 @@ export class OfficeApp {
     if (!host || this.probing) return;
     this.probing = true;
     try {
-      const quiet = this.probeLogged || this.graphics instanceof HerdrGraphics;
+      const quiet = this.probeLogged;
       this.probeLogged = true;
       const probed = await HerdrGraphics.probe(
         host.socket,
@@ -145,11 +146,17 @@ export class OfficeApp {
         this.graphics = probed.graphics;
         this.opts.log('graphics: herdr pane.graphics');
       }
+      let cell = probed.cell;
+      if (cell) saveCell(cell);
+      else if (!this.cellKnown) cell = loadCell();
       const cellChanged =
-        !this.opts.cell && (probed.cell.w !== this.cell.w || probed.cell.h !== this.cell.h);
-      if (cellChanged) {
-        this.cell = probed.cell;
+        !this.opts.cell &&
+        !!cell &&
+        (cell.w !== this.cell.w || cell.h !== this.cell.h || !this.cellKnown);
+      if (cellChanged && cell) {
+        this.cell = cell;
         this.cellKnown = true;
+        this.opts.log(`cell ${cell.w}x${cell.h} (${probed.cell ? 'herdr' : 'last known'})`);
       }
       if ((switching || cellChanged) && this.plan) this.relayoutIfNeeded(true);
     } finally {
@@ -553,6 +560,26 @@ export class OfficeApp {
         this.relayoutIfNeeded(true);
       }
     }
+  }
+}
+
+const CELL_FILE = path.join(os.homedir(), '.herdr-office', 'cell.json');
+
+/** Last cell size herdr reported, for when it can't tell (see HerdrGraphics.probe). */
+function loadCell(): Cell | null {
+  try {
+    const c = JSON.parse(fs.readFileSync(CELL_FILE, 'utf-8'));
+    return c.w > 0 && c.h > 0 ? { w: c.w, h: c.h } : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCell(cell: Cell): void {
+  try {
+    fs.writeFileSync(CELL_FILE, JSON.stringify(cell));
+  } catch {
+    // best effort
   }
 }
 

@@ -37,11 +37,16 @@ export class HerdrGraphics implements Graphics {
     this.log = log;
   }
 
+  /**
+   * Use herdr's pane graphics when the server has them. `cell` is null when
+   * herdr can't tell the cell size (e.g. a client without pixel metrics is
+   * attached) — drawing still works then, only the size must come elsewhere.
+   */
   static async probe(
     socket: string,
     paneId: string,
     log: (msg: string) => void,
-  ): Promise<{ graphics: HerdrGraphics; cell: { w: number; h: number } } | null> {
+  ): Promise<{ graphics: HerdrGraphics; cell: { w: number; h: number } | null } | null> {
     try {
       const info = (await request(socket, 'pane.graphics.info', { pane_id: paneId })) as Record<
         string,
@@ -50,10 +55,16 @@ export class HerdrGraphics implements Graphics {
       const w = Number(info.cell_width_px);
       const h = Number(info.cell_height_px);
       const layers = Number(info.max_layers_per_pane) || 16;
-      if (!(w > 0 && h > 0)) return null;
-      return { graphics: new HerdrGraphics(socket, paneId, layers, log), cell: { w, h } };
+      return {
+        graphics: new HerdrGraphics(socket, paneId, layers, log),
+        cell: w > 0 && h > 0 ? { w, h } : null,
+      };
     } catch (err) {
-      log(`pane.graphics unavailable: ${err instanceof Error ? err.message : String(err)}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      log(`pane.graphics.info: ${msg}`);
+      if (/cell size/i.test(msg)) {
+        return { graphics: new HerdrGraphics(socket, paneId, 16, log), cell: null };
+      }
       return null;
     }
   }
