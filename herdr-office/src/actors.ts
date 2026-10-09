@@ -241,19 +241,21 @@ export class Actor {
     }
     this.leaveChair(room);
     const free = room.chairs.map((_, i) => i).filter((i) => !takenChairs.has(i));
-    const aisleY = (room.lounge.y0 + room.lounge.y1) / 2;
+    // Inside the lounge walk straight-ish; from the desks go via the aisle first.
+    const lg = room.lounge;
+    const inLounge = this.x >= lg.x0 - 70 && this.x <= lg.x1 + 70 && this.y >= lg.y0 - 10;
     if (free.length && this.random() < 0.3) {
       const idx = free[Math.floor(this.random() * free.length)];
       this.chairTarget = idx;
       const c = room.chairs[idx];
       this.goal = { kind: 'chair', pose: 'read', dir: 'down' };
-      this.route({ x: c.x, y: c.y }, aisleY);
+      this.route({ x: c.x, y: c.y }, inLounge ? c.y : slot.standY);
     } else {
       const { x0, x1, y0, y1 } = room.lounge;
       const to = { x: x0 + this.random() * (x1 - x0), y: y0 + this.random() * (y1 - y0) };
       this.goal = { kind: 'wander', pose: 'stand', dir: this.dir };
       // Leaving the desk area goes through the aisle first.
-      this.route(to, this.y < room.lounge.y0 ? slot.standY : to.y);
+      this.route(to, inLounge ? to.y : slot.standY);
     }
   }
 

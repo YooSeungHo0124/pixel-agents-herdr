@@ -36,10 +36,12 @@ if (has('--help') || has('-h')) {
   --scale S            캐릭터 크기 고정 (1, 0.75, 0.5, 0.375)
   --all-workspaces     에이전트 없는 워크스페이스도 방으로 표시
   --cell WxH           터미널 셀 픽셀 크기 (자동 감지 실패 시)
-  --kitty              herdr pane.graphics 대신 kitty 이스케이프로 직접 그리기
+  --blocks             글자(반블록) 모드 강제: 어떤 터미널에서도 보임 (GNOME Terminal 등)
+  --graphics           이미지 모드 강제: kitty 같은 이미지 지원 터미널에서만 보임
+  --kitty              이미지 모드 + herdr pane.graphics 대신 kitty 이스케이프로 직접 그리기
   --frame-file PNG     (디버그) 화면을 PNG로 주기적으로 저장
 
-  조작: 캐릭터 클릭 → 그 pane으로 이동 · Tab/화살표 + Enter · 휠/PgUp/PgDn 스크롤 · +/-/0 크기 · q 종료`);
+  조작: 캐릭터 클릭 → 그 pane으로 이동 · Tab/화살표 + Enter · 휠/PgUp/PgDn 스크롤 · +/-/0 크기 · g 글자/이미지 모드 전환 · q 종료`);
   process.exit(0);
 }
 
@@ -94,6 +96,7 @@ const app = new OfficeApp({
   allWorkspaces: has('--all-workspaces'),
   frameFile: arg('--frame-file'),
   host,
+  mode: has('--blocks') ? 'blocks' : has('--graphics') || has('--kitty') ? 'graphics' : 'auto',
   onExit: () => {
     app.stop();
     process.exit(0);

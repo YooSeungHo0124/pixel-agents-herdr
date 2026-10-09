@@ -1,6 +1,7 @@
 /**
- * The office TUI: polls herdr, moves the actors, paints one kitty image per
- * room and overlays labels as terminal text.
+ * The office TUI: polls herdr, moves the actors and paints the rooms — as
+ * herdr image layers (one per room, labels as terminal text) or, in any plain
+ * terminal, as half-block text.
  */
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
@@ -8,6 +9,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { Actor } from './actors.ts';
+import { BlockScreen } from './blocks.ts';
 import { type Graphics, HerdrGraphics, KittyGraphics } from './graphics.ts';
 import type { AgentInfo, Snapshot, Source } from './herdr.ts';
 import {
@@ -15,6 +17,7 @@ import {
   plan as makePlan,
   type Plan,
   type Room,
+  BLOCK_SCALES,
   SCALES,
   updateSeats,
 } from './layout.ts';
@@ -36,6 +39,8 @@ export interface AppOptions {
   frameFile?: string;
   /** The herdr session + pane hosting this TUI (for pane.graphics). */
   host?: { socket: string; paneId: string };
+  /** blocks = half-block text (any terminal); graphics = images; auto picks. */
+  mode?: 'auto' | 'blocks' | 'graphics';
   onExit: () => void;
 }
 
@@ -88,6 +93,10 @@ export class OfficeApp {
   private stopped = false;
   private graphics: Graphics = new KittyGraphics((s) => this.out.write(s));
   private lastFrameDump = 0;
+  private mode: 'blocks' | 'graphics' = 'blocks';
+  private blocks = new BlockScreen();
+  /** Result of the last pane.graphics probe: cell size, null = unknown, undefined = no herdr graphics. */
+  private hostCell: Cell | null | undefined = undefined;
 
   constructor(opts: AppOptions) {
     this.opts = opts;
@@ -107,11 +116,12 @@ export class OfficeApp {
     process.stdin.resume();
     this.out.on('resize', () => this.onResize());
     await this.probeHost();
-    this.out.write(enterScreen + (this.cellKnown ? '' : sizeQueries));
+    this.mode = this.pickMode();
+    this.out.write(enterScreen + (this.cellKnown || this.mode === 'blocks' ? '' : sizeQueries));
     this.graphics.clearAll();
-    if (!this.cellKnown) await new Promise((r) => setTimeout(r, 400));
+    if (!this.cellKnown && this.mode === 'graphics') await new Promise((r) => setTimeout(r, 400));
     this.opts.log(
-      `graphics: ${this.graphics instanceof HerdrGraphics ? 'herdr pane.graphics' : 'kitty escapes'}`,
+      `mode ${this.mode}; graphics: ${this.graphics instanceof HerdrGraphics ? 'herdr pane.graphics' : 'kitty escapes'}`,
     );
     this.opts.log(
       `cell ${this.cell.w}x${this.cell.h} (${this.cellKnown ? 'reported' : 'assumed'}), view ${this.viewCols}x${this.viewRows}`,
@@ -122,6 +132,28 @@ export class OfficeApp {
     // herdr knows the pane's cell size only while a client shows it; keep
     // asking so a hidden-at-start office (or a font zoom) picks it up.
     if (this.opts.host) this.timers.push(setInterval(() => void this.probeHost(), 3000));
+  }
+
+  /**
+   * Images only when every attached terminal can show them: herdr reports a
+   * cell size only then (a GNOME Terminal client makes it unknown). Outside
+   * herdr, trust TERM. Everything else gets half-block text.
+   */
+  private pickMode(): 'blocks' | 'graphics' {
+    const want = this.opts.mode ?? 'auto';
+    if (want !== 'auto') return want;
+    if (this.opts.host && this.hostCell !== undefined) return this.hostCell ? 'graphics' : 'blocks';
+    const term = `${process.env.TERM ?? ''} ${process.env.TERM_PROGRAM ?? ''}`;
+    return /kitty|ghostty|wezterm/i.test(term) && !this.opts.host ? 'graphics' : 'blocks';
+  }
+
+  private setMode(mode: 'blocks' | 'graphics'): void {
+    if (mode === this.mode) return;
+    this.mode = mode;
+    this.forcedScale = undefined;
+    this.graphics.clearAll();
+    this.blocks.reset();
+    this.relayoutIfNeeded(true);
   }
 
   private probing = false;
@@ -139,6 +171,7 @@ export class OfficeApp {
         host.paneId,
         quiet ? () => undefined : this.opts.log,
       );
+      this.hostCell = probed ? probed.cell : undefined;
       if (!probed) return;
       const switching = !(this.graphics instanceof HerdrGraphics);
       if (switching) {
@@ -242,18 +275,38 @@ export class OfficeApp {
     return this.snapshot.workspaces.filter((w) => (this.seats.get(w.id)?.length ?? 0) > 0);
   }
 
+  /** Cells the planner lays out on: real pixels, or 1×2 "pixels" per half-block cell. */
+  private layoutCell(): Cell {
+    return this.mode === 'blocks' ? { w: 1, h: 2 } : this.cell;
+  }
+
+  private scales(): readonly number[] {
+    return this.mode === 'blocks' ? BLOCK_SCALES : SCALES;
+  }
+
   private relayoutIfNeeded(force = false): void {
     const ws = this.visibleWorkspaces();
+    const cell = this.layoutCell();
     const key = JSON.stringify([
       ws.map((w) => [w.id, w.label, this.seats.get(w.id) ?? []]),
       this.viewCols,
       this.viewRows,
-      this.cell,
+      cell,
       this.forcedScale,
+      this.mode,
     ]);
     if (!force && key === this.planKey) return;
     this.planKey = key;
-    this.plan = makePlan(ws, this.seats, this.viewCols, this.viewRows, this.cell, this.forcedScale);
+    this.plan = makePlan(
+      ws,
+      this.seats,
+      this.viewCols,
+      this.viewRows,
+      cell,
+      this.forcedScale,
+      this.scales(),
+    );
+    this.blocks.reset();
     this.scroll = Math.max(0, Math.min(this.scroll, this.plan.totalRows - this.viewRows));
     this.bgCache.clear();
     this.frames.clear();
@@ -297,19 +350,24 @@ export class OfficeApp {
       actor.update(dt, room, slot, taken);
     }
 
-    let out = '';
     const actors = [...this.actors.values()];
-    for (const room of plan.rooms.slice(0, this.graphics.maxLayers))
-      out += this.drawRoom(room, plan, actors);
-    out += this.drawTexts(plan, actors);
-    if (out) this.out.write(out);
+    if (this.mode === 'blocks') {
+      this.out.write(this.drawBlocks(plan, actors));
+    } else {
+      let out = '';
+      for (const room of plan.rooms.slice(0, this.graphics.maxLayers))
+        out += this.drawRoom(room, plan, actors);
+      out += this.drawTexts(plan, actors);
+      if (out) this.out.write(out);
+    }
     if (this.opts.frameFile && now - this.lastFrameDump > 2000) {
       this.lastFrameDump = now;
       this.dumpFrame(plan);
     }
   }
 
-  private drawRoom(room: Room, plan: Plan, actors: Actor[]): string {
+  /** Paint a room's current frame into its buffer (and refresh its hit boxes). */
+  private paint(room: Room, plan: Plan, actors: Actor[]): Img {
     const id = room.ws.id;
     const label = roomLabel(room, actors).text;
     let bg = this.bgCache.get(id);
@@ -326,6 +384,28 @@ export class OfficeApp {
       id,
       paintRoom(buf, bg.img, room, plan, actors, this.sheetFor, this.hover, this.t),
     );
+    return buf;
+  }
+
+  /** Half-block mode: the whole viewport as one pixel image, then cells. */
+  private drawBlocks(plan: Plan, actors: Actor[]): string {
+    const screen = new Img(this.viewCols, this.viewRows * 2);
+    for (const room of plan.rooms) {
+      const top = room.row - this.scroll;
+      if (top + room.rows <= 0 || top >= this.viewRows) continue;
+      screen.blit(this.paint(room, plan, actors), room.col, top * 2);
+    }
+    return this.blocks.render(
+      screen,
+      this.viewCols,
+      this.viewRows + 1,
+      this.collectTexts(plan, actors),
+    );
+  }
+
+  private drawRoom(room: Room, plan: Plan, actors: Actor[]): string {
+    const id = room.ws.id;
+    const buf = this.paint(room, plan, actors);
 
     // Visible rows of this room after scrolling.
     const top = room.row - this.scroll;
@@ -363,20 +443,7 @@ export class OfficeApp {
   }
 
   private drawTexts(plan: Plan, actors: Actor[]): string {
-    const texts: Text[] = [];
-    for (const room of plan.rooms) {
-      const titles = new Map<string, string>();
-      for (const slot of room.slots)
-        titles.set(slot.paneId, truncate(this.titleFor(slot.paneId), slot.titleCols));
-      for (const t of roomTexts(room, actors, titles)) {
-        const row = room.row + t.row - this.scroll;
-        if (row < 0 || row >= this.viewRows) continue;
-        const col = room.col + t.col;
-        const text = truncate(t.text, Math.max(0, this.viewCols - col));
-        texts.push({ row, col, text, fg: t.fg, bold: t.bold });
-      }
-    }
-    texts.push(this.statusLine(actors));
+    const texts = this.collectTexts(plan, actors);
     const same =
       texts.length === this.textsShown.length &&
       texts.every((t, i) => {
@@ -391,6 +458,24 @@ export class OfficeApp {
     return out;
   }
 
+  private collectTexts(plan: Plan, actors: Actor[]): Text[] {
+    const texts: Text[] = [];
+    for (const room of plan.rooms) {
+      const titles = new Map<string, string>();
+      for (const slot of room.slots)
+        titles.set(slot.paneId, truncate(this.titleFor(slot.paneId), slot.titleCols));
+      for (const t of roomTexts(room, actors, titles)) {
+        const row = room.row + t.row - this.scroll;
+        if (row < 0 || row >= this.viewRows) continue;
+        const col = room.col + t.col;
+        const text = truncate(t.text, Math.max(0, this.viewCols - col));
+        texts.push({ row, col, text, fg: t.fg, bold: t.bold });
+      }
+    }
+    texts.push(this.statusLine(actors));
+    return texts;
+  }
+
   private statusLine(actors: Actor[]): Text {
     const live = actors.filter((a) => !a.leaving);
     const count = (s: string): number => live.filter((a) => a.status === s).length;
@@ -403,7 +488,7 @@ export class OfficeApp {
       const ws =
         this.snapshot.workspaces.find((w) => w.id === hovered.roomId)?.label ?? hovered.roomId;
       text += `· ${ws} / ${hovered.paneId} · ${hovered.info.kind} · ${STATUS_KO[hovered.status]} · ${hovered.info.title} (클릭: 이동)`;
-    } else text += '· 클릭: pane 이동 · 휠: 스크롤 · +/-: 크기 · q: 종료';
+    } else text += '· 클릭: pane 이동 · 휠: 스크롤 · +/-: 크기 · g: 화면모드 · q: 종료';
     text = truncate(text, this.viewCols - 1);
     return {
       row: this.viewRows,
@@ -541,12 +626,13 @@ export class OfficeApp {
       } else if (k === 'Enter' && this.hover) {
         this.focus(this.hover);
       } else if (k === '+' || k === '=' || k === '-') {
-        const cur = this.forcedScale ?? this.plan?.scale ?? 1;
-        const i = SCALES.indexOf(cur as (typeof SCALES)[number]);
-        const next =
-          k === '-' ? SCALES[Math.min(SCALES.length - 1, i + 1)] : SCALES[Math.max(0, i - 1)];
+        const list = this.scales();
+        const cur = this.forcedScale ?? this.plan?.scale ?? list[0];
+        let i = list.indexOf(cur);
+        if (i < 0) i = 0;
+        const next = k === '-' ? list[Math.min(list.length - 1, i + 1)] : list[Math.max(0, i - 1)];
         this.forcedScale = next;
-        this.flash(`크기 ${Math.round(next * 100)}%`);
+        this.flash(`크기 ${list.length - list.indexOf(next)}/${list.length}`);
         this.relayoutIfNeeded();
       } else if (k === '0') {
         this.forcedScale = undefined;
@@ -556,6 +642,11 @@ export class OfficeApp {
         const max = Math.max(0, (this.plan?.totalRows ?? 0) - this.viewRows);
         const step = Math.max(1, this.viewRows - 2) * (k === 'PageDown' ? 1 : -1);
         this.scroll = Math.max(0, Math.min(max, this.scroll + step));
+      } else if (k === 'g') {
+        this.setMode(this.mode === 'blocks' ? 'graphics' : 'blocks');
+        this.flash(
+          this.mode === 'blocks' ? '글자(블록) 모드' : '이미지 모드 (kitty 등에서만 보임)',
+        );
       } else if (k === 'r') {
         this.relayoutIfNeeded(true);
       }

@@ -14,8 +14,17 @@ gemini, …) is a character acting out its herdr status:
 
 No browser, no Claude hooks: the only data source is herdr's socket API
 (`agent.list`, `workspace.list`), and the only writes are `agent.focus` /
-`workspace.focus` when you click. Images go through herdr's own
-`pane.graphics` layers (one per room), labels are real terminal text.
+`workspace.focus` when you click.
+
+Two ways to draw, picked automatically (`g` toggles, `--blocks` / `--graphics`
+force one):
+
+- **blocks** — truecolor half-block text. Works in any terminal and any herdr
+  pane (GNOME Terminal included). Chosen whenever herdr can't vouch that every
+  attached client shows images.
+- **graphics** — real images through herdr's `pane.graphics` layers (one per
+  room, labels as terminal text). Needs an image-capable terminal such as
+  kitty, and herdr's `[experimental] kitty_graphics = true`.
 
 ## Run
 

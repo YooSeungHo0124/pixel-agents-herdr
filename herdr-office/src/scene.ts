@@ -101,16 +101,17 @@ export function paintBackground(room: Room, plan: Plan, actors: Actor[]): Img {
   const { w: cw, h: ch } = plan.cell;
   const img = new Img(room.pxW, room.pxH);
   const P = Math.max(1, Math.round(4 * s)); // one "art pixel"
-  const wallH = Math.round(BASE.wallH * s);
+  const wallH = Math.round(room.wallH * s);
   const [plank, seam] = FLOORS[hash(room.ws.id) % FLOORS.length];
 
   // Floor planks.
   img.rect(0, wallH, room.pxW, room.pxH - wallH, plank);
-  const plankH = 8 * P;
+  const plankH = Math.max(3, Math.round(32 * s));
   for (let y = wallH, i = 0; y < room.pxH; y += plankH, i++) {
     img.rect(0, y, room.pxW, P, seam);
-    const off = (i % 2) * 14 * P;
-    for (let x = off; x < room.pxW; x += 28 * P) img.rect(x, y, P, plankH, seam);
+    const off = (i % 2) * Math.round(56 * s);
+    for (let x = off; x < room.pxW; x += Math.max(6, Math.round(112 * s)))
+      img.rect(x, y, P, plankH, seam);
   }
 
   // Wall with wainscot and baseboard.
@@ -144,8 +145,9 @@ export function paintBackground(room: Room, plan: Plan, actors: Actor[]): Img {
   img.rect(rugX + 3 * P, rugY + 3 * P, rugW - 6 * P, rugH - 6 * P, 0xc66a5c);
 
   // Plant and water cooler.
-  paintPlant(img, room.plant.x * s, room.plant.y * s, P);
-  paintCooler(img, room.cooler.x * s, room.cooler.y * s, P);
+  // Props scale with the room (4·s px per art pixel), not the 1 px minimum line.
+  paintPlant(img, room.plant.x * s, room.plant.y * s, 4 * s);
+  paintCooler(img, room.cooler.x * s, room.cooler.y * s, 4 * s);
 
   // Desk fronts + title plates.
   for (const slot of room.slots) {
@@ -242,7 +244,7 @@ function paintBubble(
   s: number,
   t: number,
 ): void {
-  const g = Math.max(2, Math.round(3.2 * s));
+  const g = Math.max(1, Math.round(3.2 * s));
   const w = 9 * g;
   const h = 10 * g;
   const x = Math.round(cx - w / 2);
@@ -349,7 +351,7 @@ export function paintRoom(
     if (bubble && a.fade > 0.5) paintBubble(out, a.x * s, top, bubble, s, t);
     if (a.info.focused && !bubble) {
       // Little marker over the agent whose pane is focused in herdr.
-      const m = Math.max(2, Math.round(3 * s));
+      const m = Math.max(1, Math.round(3 * s));
       const cx = Math.round(a.x * s);
       const y = top - 5 * m;
       for (let r = 0; r < 3; r++)

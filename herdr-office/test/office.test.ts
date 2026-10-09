@@ -130,3 +130,28 @@ test('text width and truncation handle Hangul', () => {
   assert.equal(truncate('비파괴 검사 영상', 7), '비파괴…');
   assert.equal(sanitize('a\x1b[31mb'), 'a[31mb');
 });
+
+test('blocks: half-block cells, text on top, and only changed cells redrawn', async () => {
+  const { BlockScreen } = await import('../src/blocks.ts');
+  const img = new Img(4, 4);
+  img.rect(0, 0, 4, 1, 0xff0000);
+  img.rect(0, 1, 4, 1, 0x0000ff);
+  const screen = new BlockScreen();
+  const first = screen.render(img, 4, 2, [{ row: 1, col: 0, text: '짱', fg: 0xffffff }]);
+  assert.match(first, /▀/);
+  assert.match(first, /짱/);
+  assert.equal(screen.render(img, 4, 2, [{ row: 1, col: 0, text: '짱', fg: 0xffffff }]), '');
+  img.rect(3, 0, 1, 2, 0x00ff00);
+  const diff = screen.render(img, 4, 2, [{ row: 1, col: 0, text: '짱', fg: 0xffffff }]);
+  assert.match(diff, /\x1b\[1;4H/);
+  assert.doesNotMatch(diff, /짱/);
+});
+
+test('a short, wide viewport puts the lounge beside the desks', () => {
+  const ws = [1, 2, 3].map((n) => ({ id: `w${n}`, label: `w${n}`, number: n, focused: false }));
+  const seats = new Map(ws.map((w) => [w.id, ['p1']]));
+  const p = plan(ws, seats, 340, 30, { w: 1, h: 2 }, undefined, [0.25, 0.125]);
+  assert.ok(p.totalRows <= 30);
+  const room = p.rooms[0];
+  assert.ok(room.lounge.x0 > room.slots[0].cx);
+});
