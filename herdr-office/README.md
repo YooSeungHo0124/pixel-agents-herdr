@@ -21,7 +21,13 @@ force one):
 
 - **blocks** — truecolor half-block text. Works in any terminal and any herdr
   pane (GNOME Terminal included). Chosen whenever herdr can't vouch that every
-  attached client shows images.
+  attached client shows images. Shows the _stage_: no office background, just
+  the characters as large as the pane allows, one box per workspace (typing at
+  the laptop = working, hopping with a red `!` = blocked, green `✓` = done,
+  reading in a chair = idle). Half-block pixels are rarely square; set
+  `{ "aspect": <cell height / 2 / cell width> }` in `~/.herdr-office/config.json`
+  (or `--aspect`) so sprites keep their proportions, e.g. `1.3` for a 10×26
+  px cell.
 - **graphics** — real images through herdr's `pane.graphics` layers (one per
   room, labels as terminal text). Needs an image-capable terminal such as
   kitty, and herdr's `[experimental] kitty_graphics = true`.

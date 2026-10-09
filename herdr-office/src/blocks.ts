@@ -14,6 +14,8 @@ export interface BlockText {
   text: string;
   fg?: number;
   bold?: boolean;
+  /** Background; default = whatever pixel is behind the text. */
+  bg?: number;
 }
 
 interface Cell {
@@ -85,7 +87,7 @@ export class BlockScreen {
         if (c < 0 || c + (wide ? 1 : 0) >= cols) break;
         const under = grid[t.row * cols + c];
         // Text sits on whatever is behind it: the lower pixel reads best.
-        const bg = under.ch === '▀' ? under.bg : under.ch === '▄' ? under.fg : under.bg;
+        const bg = t.bg ?? (under.ch === '▀' ? under.bg : under.ch === '▄' ? under.fg : under.bg);
         grid[t.row * cols + c] = { ch, fg: t.fg ?? -1, bg, bold: !!t.bold };
         if (wide) grid[t.row * cols + c + 1] = { ch: '', fg: t.fg ?? -1, bg, bold: !!t.bold };
         c += wide ? 2 : 1;

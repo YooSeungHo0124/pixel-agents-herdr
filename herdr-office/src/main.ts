@@ -36,6 +36,8 @@ if (has('--help') || has('-h')) {
   --scale S            캐릭터 크기 고정 (1, 0.75, 0.5, 0.375)
   --all-workspaces     에이전트 없는 워크스페이스도 방으로 표시
   --cell WxH           터미널 셀 픽셀 크기 (자동 감지 실패 시)
+  --aspect R           글자 모드 픽셀의 세로/가로 비율 (셀 높이/2 ÷ 셀 너비, 예: 10x26 셀 → 1.3)
+                       ~/.herdr-office/config.json 의 "aspect" 로도 지정 가능
   --blocks             글자(반블록) 모드 강제: 어떤 터미널에서도 보임 (GNOME Terminal 등)
   --graphics           이미지 모드 강제: kitty 같은 이미지 지원 터미널에서만 보임
   --kitty              이미지 모드 + herdr pane.graphics 대신 kitty 이스케이프로 직접 그리기
@@ -86,6 +88,17 @@ const characterDirs = [
   path.join(HERE, '..', '..', 'webview-ui', 'public', 'assets', 'characters'),
 ];
 
+/** Optional settings file: { "aspect": 1.3 }. */
+function readConfig(): { aspect?: number } {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(HOME_DIR, 'config.json'), 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+const aspectRaw = Number(arg('--aspect') ?? process.env.HERDR_OFFICE_ASPECT ?? readConfig().aspect);
+const aspect = aspectRaw > 0.3 && aspectRaw < 4 ? aspectRaw : undefined;
+
 const scaleArg = arg('--scale');
 const app = new OfficeApp({
   source,
@@ -96,6 +109,7 @@ const app = new OfficeApp({
   allWorkspaces: has('--all-workspaces'),
   frameFile: arg('--frame-file'),
   host,
+  aspect,
   mode: has('--blocks') ? 'blocks' : has('--graphics') || has('--kitty') ? 'graphics' : 'auto',
   onExit: () => {
     app.stop();

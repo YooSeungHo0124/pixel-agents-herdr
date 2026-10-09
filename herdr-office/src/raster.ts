@@ -144,8 +144,16 @@ export class Img {
  */
 export function scaleArea(src: Img, factor: number): Img {
   if (factor === 1) return src.clone();
-  const w = Math.max(1, Math.round(src.width * factor));
-  const h = Math.max(1, Math.round(src.height * factor));
+  return scaleTo(
+    src,
+    Math.max(1, Math.round(src.width * factor)),
+    Math.max(1, Math.round(src.height * factor)),
+  );
+}
+
+/** Area-average resize to exactly w×h (each axis may shrink by a different amount). */
+export function scaleTo(src: Img, w: number, h: number): Img {
+  if (w === src.width && h === src.height) return src.clone();
   const out = new Img(w, h);
   const s = src.data;
   const d = out.data;

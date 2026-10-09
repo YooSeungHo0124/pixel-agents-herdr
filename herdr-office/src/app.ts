@@ -17,7 +17,6 @@ import {
   plan as makePlan,
   type Plan,
   type Room,
-  BLOCK_SCALES,
   SCALES,
   updateSeats,
 } from './layout.ts';
@@ -25,6 +24,15 @@ import { encodePng } from './png.ts';
 import { Img } from './raster.ts';
 import { type Hit, paintBackground, paintRoom, roomLabel, roomTexts } from './scene.ts';
 import { type CharacterSheet, loadCharacterDir } from './sheet.ts';
+import {
+  paintStage,
+  Performer,
+  planStage,
+  STAGE_SCALES,
+  stageHitAt,
+  StageSprites,
+  type StagePlan,
+} from './stage.ts';
 import { enterScreen, leaveScreen, parseInput, sizeQueries, textAt, ESC } from './term.ts';
 import { sanitize, strWidth, truncate } from './text.ts';
 
@@ -41,6 +49,8 @@ export interface AppOptions {
   host?: { socket: string; paneId: string };
   /** blocks = half-block text (any terminal); graphics = images; auto picks. */
   mode?: 'auto' | 'blocks' | 'graphics';
+  /** Height / width of one half-block pixel on the user's terminal (cell h / 2 / cell w). */
+  aspect?: number;
   onExit: () => void;
 }
 
@@ -97,6 +107,10 @@ export class OfficeApp {
   private blocks = new BlockScreen();
   /** Result of the last pane.graphics probe: cell size, null = unknown, undefined = no herdr graphics. */
   private hostCell: Cell | null | undefined = undefined;
+  /** Text mode draws the stage (characters only) instead of the office rooms. */
+  private stage: StagePlan | null = null;
+  private performers = new Map<string, Performer>();
+  private stageSprites = new Map<CharacterSheet, StageSprites>();
 
   constructor(opts: AppOptions) {
     this.opts = opts;
@@ -225,13 +239,46 @@ export class OfficeApp {
   }
 
   /** cast.json maps an agent kind (or pane id) to a sheet; else a stable pick per pane. */
-  private sheetFor = (a: Actor): CharacterSheet => {
-    const named = this.cast[a.paneId] ?? this.cast[a.info.kind] ?? this.cast.default;
+  private sheetFor = (a: Actor): CharacterSheet => this.sheetOf(a.info);
+
+  private sheetOf(info: AgentInfo): CharacterSheet {
+    const named = this.cast[info.paneId] ?? this.cast[info.kind] ?? this.cast.default;
     if (named && this.sheets.has(named)) return this.sheets.get(named)!;
     const list = [...this.sheets.values()];
     let h = 0;
-    for (const ch of a.paneId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    for (const ch of info.paneId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
     return list[h % list.length];
+  }
+
+  private spritesFor = (info: AgentInfo): StageSprites => {
+    const sheet = this.sheetOf(info);
+    let sp = this.stageSprites.get(sheet);
+    if (!sp) {
+      sp = new StageSprites(sheet);
+      this.stageSprites.set(sheet, sp);
+    }
+    return sp;
+  };
+
+  private get aspect(): number {
+    return this.opts.aspect ?? 1;
+  }
+
+  /** The biggest sprite of any sheet at a scale, for the stage layout. */
+  private spriteSize = (scale: number): { w: number; h: number } => {
+    let w = 1;
+    let h = 1;
+    for (const sheet of this.sheets.values()) {
+      let sp = this.stageSprites.get(sheet);
+      if (!sp) {
+        sp = new StageSprites(sheet);
+        this.stageSprites.set(sheet, sp);
+      }
+      const sz = sp.size(scale, this.aspect);
+      w = Math.max(w, sz.w);
+      h = Math.max(h, sz.h);
+    }
+    return { w, h };
   };
 
   // ── herdr ───────────────────────────────────────────────────
@@ -281,7 +328,15 @@ export class OfficeApp {
   }
 
   private scales(): readonly number[] {
-    return this.mode === 'blocks' ? BLOCK_SCALES : SCALES;
+    return this.mode === 'blocks' ? STAGE_SCALES : SCALES;
+  }
+
+  private totalRows(): number {
+    return (this.mode === 'blocks' ? this.stage?.totalRows : this.plan?.totalRows) ?? 0;
+  }
+
+  private currentScale(): number | undefined {
+    return this.mode === 'blocks' ? this.stage?.scale : this.plan?.scale;
   }
 
   private relayoutIfNeeded(force = false): void {
@@ -297,6 +352,24 @@ export class OfficeApp {
     ]);
     if (!force && key === this.planKey) return;
     this.planKey = key;
+    if (this.mode === 'blocks') {
+      this.stage = planStage(
+        ws,
+        this.seats,
+        this.viewCols,
+        this.viewRows,
+        this.spriteSize,
+        this.forcedScale,
+      );
+      this.blocks.reset();
+      this.scroll = Math.max(0, Math.min(this.scroll, this.stage.totalRows - this.viewRows));
+      this.out.write(`${ESC}[2J`);
+      this.opts.log(
+        `stage: scale ${this.stage.scale}, sprite ${this.stage.spriteW}x${this.stage.spriteH}px, ${this.stage.sections.length} sections, ${this.stage.totalRows} rows`,
+      );
+      return;
+    }
+    this.stage = null;
     this.plan = makePlan(
       ws,
       this.seats,
@@ -328,6 +401,11 @@ export class OfficeApp {
     const dt = Math.min(0.25, (now - this.lastTick) / 1000);
     this.lastTick = now;
     this.t += dt;
+    if (this.mode === 'blocks') {
+      this.reapLeavers(dt);
+      if (this.stage) this.out.write(this.drawStage(this.stage));
+      return;
+    }
     const plan = this.plan;
     if (!plan) return;
 
@@ -351,19 +429,46 @@ export class OfficeApp {
     }
 
     const actors = [...this.actors.values()];
-    if (this.mode === 'blocks') {
-      this.out.write(this.drawBlocks(plan, actors));
-    } else {
-      let out = '';
-      for (const room of plan.rooms.slice(0, this.graphics.maxLayers))
-        out += this.drawRoom(room, plan, actors);
-      out += this.drawTexts(plan, actors);
-      if (out) this.out.write(out);
-    }
+    let out = '';
+    for (const room of plan.rooms.slice(0, this.graphics.maxLayers))
+      out += this.drawRoom(room, plan, actors);
+    out += this.drawTexts(plan, actors);
+    if (out) this.out.write(out);
     if (this.opts.frameFile && now - this.lastFrameDump > 2000) {
       this.lastFrameDump = now;
       this.dumpFrame(plan);
     }
+  }
+
+  private reapLeavers(dt: number): void {
+    for (const [id, actor] of this.actors) {
+      if (!actor.leaving) continue;
+      actor.fade = Math.max(0, actor.fade - dt * 2.5);
+      if (actor.fade <= 0) {
+        this.actors.delete(id);
+        this.performers.delete(id);
+      }
+    }
+  }
+
+  /** Text mode: characters only, one box per workspace. */
+  private drawStage(stage: StagePlan): string {
+    const screen = new Img(this.viewCols, this.viewRows * 2);
+    const agents = new Map<string, AgentInfo>();
+    for (const a of this.actors.values()) if (!a.leaving) agents.set(a.paneId, a.info);
+    const texts = paintStage(
+      screen,
+      stage,
+      this.scroll,
+      agents,
+      this.performers,
+      this.spritesFor,
+      this.aspect,
+      this.hover,
+      this.t,
+    );
+    texts.push(this.statusLine([...this.actors.values()]));
+    return this.blocks.render(screen, this.viewCols, this.viewRows + 1, texts);
   }
 
   /** Paint a room's current frame into its buffer (and refresh its hit boxes). */
@@ -385,22 +490,6 @@ export class OfficeApp {
       paintRoom(buf, bg.img, room, plan, actors, this.sheetFor, this.hover, this.t),
     );
     return buf;
-  }
-
-  /** Half-block mode: the whole viewport as one pixel image, then cells. */
-  private drawBlocks(plan: Plan, actors: Actor[]): string {
-    const screen = new Img(this.viewCols, this.viewRows * 2);
-    for (const room of plan.rooms) {
-      const top = room.row - this.scroll;
-      if (top + room.rows <= 0 || top >= this.viewRows) continue;
-      screen.blit(this.paint(room, plan, actors), room.col, top * 2);
-    }
-    return this.blocks.render(
-      screen,
-      this.viewCols,
-      this.viewRows + 1,
-      this.collectTexts(plan, actors),
-    );
   }
 
   private drawRoom(room: Room, plan: Plan, actors: Actor[]): string {
@@ -565,6 +654,10 @@ export class OfficeApp {
 
   private ordered(): string[] {
     const out: string[] = [];
+    if (this.mode === 'blocks') {
+      for (const sec of this.stage?.sections ?? []) for (const c of sec.cards) out.push(c.paneId);
+      return out;
+    }
     for (const room of this.plan?.rooms ?? []) for (const s of room.slots) out.push(s.paneId);
     return out;
   }
@@ -593,8 +686,20 @@ export class OfficeApp {
       if (ev.type === 'mouse') {
         const m = ev.mouse;
         if (m.kind === 'wheelUp' || m.kind === 'wheelDown') {
-          const max = Math.max(0, (this.plan?.totalRows ?? 0) - this.viewRows);
+          const max = Math.max(0, this.totalRows() - this.viewRows);
           this.scroll = Math.max(0, Math.min(max, this.scroll + (m.kind === 'wheelUp' ? -3 : 3)));
+          continue;
+        }
+        if (this.mode === 'blocks') {
+          const hit = this.stage ? stageHitAt(this.stage, m.col, m.row + this.scroll) : null;
+          if (m.kind === 'move' || m.kind === 'drag') this.hover = hit?.paneId ?? null;
+          else if (m.kind === 'down' && m.button === 0 && hit) {
+            if (hit.paneId) this.focus(hit.paneId);
+            else {
+              this.flash(`→ ${hit.ws.label} 워크스페이스로 이동`);
+              this.opts.source.focusWorkspace(hit.ws.id).catch(() => undefined);
+            }
+          }
           continue;
         }
         const hit = this.hitAt(m.col, m.row);
@@ -627,7 +732,7 @@ export class OfficeApp {
         this.focus(this.hover);
       } else if (k === '+' || k === '=' || k === '-') {
         const list = this.scales();
-        const cur = this.forcedScale ?? this.plan?.scale ?? list[0];
+        const cur = this.forcedScale ?? this.currentScale() ?? list[0];
         let i = list.indexOf(cur);
         if (i < 0) i = 0;
         const next = k === '-' ? list[Math.min(list.length - 1, i + 1)] : list[Math.max(0, i - 1)];
@@ -639,7 +744,7 @@ export class OfficeApp {
         this.flash('크기 자동');
         this.relayoutIfNeeded();
       } else if (k === 'PageDown' || k === 'PageUp') {
-        const max = Math.max(0, (this.plan?.totalRows ?? 0) - this.viewRows);
+        const max = Math.max(0, this.totalRows() - this.viewRows);
         const step = Math.max(1, this.viewRows - 2) * (k === 'PageDown' ? 1 : -1);
         this.scroll = Math.max(0, Math.min(max, this.scroll + step));
       } else if (k === 'g') {
